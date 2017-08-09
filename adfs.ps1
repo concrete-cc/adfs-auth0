@@ -5,7 +5,7 @@
 
 function AddRelyingParty
 (
-[string]$realm = $(throw "Realm for the application is required. E.g.: http://whatever.com or urn:whatever"),
+[string]$realm = $(throw "Realm for the application is required. E.g.: http://concreteplatform.com or urn:concreteplatform"),
 [string]$webAppEndpoint = $(throw "Endpoint where the token will be POSTed is required")
 )
 {
@@ -29,16 +29,22 @@ function AddRelyingParty
 
   # check if running as Admin
     $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-    if ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) -eq $false) 
+    if ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) -eq $false)
     {
       Write-Error "This PowerShell script requires Administrator privilieges. Try executing by doing right click -> 'Run as Administrator'"
       return;
     }
   }
-  
+
+  # Upsert username Claim Description
+  if (-Not (Get-ADFSClaimDescription -Name "username"))
+  {
+    Add-ADFSClaimDescription -name "username" -ClaimType "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/username" -IsAccepted $true -IsOffered $true
+  }
+
   # remove if exists
   $rp = Get-ADFSRelyingPartyTrust -Name $realm
-  if ($rp) 
+  if ($rp)
   {
     Write-Verbose "Removing Relying Party Trust: $realm"
     Remove-ADFSRelyingPartyTrust -TargetName $realm
@@ -53,15 +59,15 @@ function AddRelyingParty
 
   # transform Rules
   $rules = @'
-  @RuleName = "Store: ActiveDirectory -> Mail (ldap attribute: mail), Name (ldap attribute: userPrincipalName), GivenName (ldap attribute: givenName), Surname (ldap attribute: sn)" 
+  @RuleName = "Store: ActiveDirectory -> Mail (ldap attribute: mail), Name (ldap attribute: userPrincipalName), GivenName (ldap attribute: givenName), Surname (ldap attribute: sn)"
   c:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/windowsaccountname", Issuer == "AD AUTHORITY"]
-   => issue(store = "Active Directory", types = ("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress", 
-   "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name", 
-   "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier", 
-   "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname", 
-   "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname"), query = ";mail,displayName,userPrincipalName,givenName,sn;{0}", param = c.Value);
+   => issue(store = "Active Directory", types = ("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress", "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+   "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+   "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname",
+   "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname",
+   "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/username"), query = ";mail,displayName,userPrincipalName,givenName,sn,mail;{0}", param = c.Value);
 '@
-  
+
   Write-Verbose "Adding Claim Rules"
   Set-ADFSRelyingPartyTrust –TargetName $realm -IssuanceTransformRules $rules
 
@@ -102,7 +108,7 @@ function RemoveRelyingParty
 
     # check if running as Admin
     $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-    if ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) -eq $false) 
+    if ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) -eq $false)
     {
         Write-Error "This PowerShell script requires Administrator privilieges. Try executing by doing right click -> 'Run as Administrator'"
         return;
@@ -111,7 +117,7 @@ function RemoveRelyingParty
 
   # remove if exists
   $rp = Get-ADFSRelyingPartyTrust -Name $realm
-  if ($rp) 
+  if ($rp)
   {
     Write-Verbose "Removing Relying Party Trust: $realm"
     Remove-ADFSRelyingPartyTrust -TargetName $realm
